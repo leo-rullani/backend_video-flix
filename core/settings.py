@@ -44,6 +44,7 @@ INSTALLED_APPS = [
 
     # Eigene Apps
     "content.apps.ContentConfig",
+    "auth",
 ]
 
 MIDDLEWARE = [

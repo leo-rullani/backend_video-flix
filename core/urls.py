@@ -7,9 +7,8 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-
-    # Django RQ dashboard
     path("django-rq/", include("django_rq.urls")),
+    path("api/", include(("auth.api.urls", "auth_api"), namespace="auth_api")),
 ]
 
 if settings.DEBUG:
