@@ -91,6 +91,7 @@ DATABASES = {
     }
 }
 
+
 # Redis Cache
 
 CACHES = {
@@ -113,7 +114,7 @@ RQ_QUEUES = {
         "HOST": os.environ.get("REDIS_HOST", default="redis"),
         "PORT": int(os.environ.get("REDIS_PORT", default=6379)),
         "DB": int(os.environ.get("REDIS_DB", default=0)),
-        "DEFAULT_TIMEOUT": 900,
+        "DEFAULT_TIMEOUT": 360,
         "REDIS_CLIENT_KWARGS": {},
     },
 }
