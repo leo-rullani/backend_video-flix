@@ -12,8 +12,9 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 
-from .serializers import RegisterSerializer
+from .serializers import RegisterSerializer, LoginSerializer
 
 User = get_user_model()
 
@@ -47,6 +48,31 @@ def get_user_from_uid(uidb64):
         return User.objects.get(pk=uid)
     except Exception:
         return None
+
+
+def get_tokens_for_user(user):
+    """Return refresh and access tokens for a user."""
+    refresh = RefreshToken.for_user(user)
+    return str(refresh), str(refresh.access_token)
+
+
+def set_auth_cookies(response, refresh_token, access_token):
+    """Attach JWT tokens as HttpOnly cookies."""
+    secure_cookie = not settings.DEBUG
+    response.set_cookie(
+        "refresh_token",
+        refresh_token,
+        httponly=True,
+        secure=secure_cookie,
+        samesite="Lax",
+    )
+    response.set_cookie(
+        "access_token",
+        access_token,
+        httponly=True,
+        secure=secure_cookie,
+        samesite="Lax",
+    )
 
 
 class RegisterView(APIView):
@@ -100,3 +126,31 @@ class ActivateView(APIView):
             {"message": "Account successfully activated."},
             status=status.HTTP_200_OK,
         )
+
+
+class LoginView(APIView):
+    """Authenticate a user and set JWT cookies."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        """Validate credentials and set JWT cookies."""
+        serializer = LoginSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = serializer.validated_data["user"]
+        refresh, access = get_tokens_for_user(user)
+        body = {
+            "detail": "Login successful",
+            "user": {"id": user.id, "username": user.email},
+        }
+        response = Response(body, status=status.HTTP_200_OK)
+        set_auth_cookies(response, refresh, access)
+        return response
