@@ -13,6 +13,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 
 from .serializers import RegisterSerializer, LoginSerializer
 
@@ -153,4 +155,43 @@ class LoginView(APIView):
         }
         response = Response(body, status=status.HTTP_200_OK)
         set_auth_cookies(response, refresh, access)
+        return response
+
+class LogoutView(APIView):
+    """Log out user by blacklisting refresh token and deleting cookies."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh_cookie = request.COOKIES.get("refresh_token")
+        if not refresh_cookie:
+            return Response(
+                {"detail": "Refresh token cookie is missing."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            token = RefreshToken(refresh_cookie)
+            try:
+                token.blacklist()
+            except Exception:
+                # Blacklist not configured -> ignore, but still clear cookies
+                pass
+        except TokenError:
+            return Response(
+                {"detail": "Invalid refresh token."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        response = Response(
+            {
+                "detail": (
+                    "Logout successful! All tokens will be deleted. "
+                    "Refresh token is now invalid."
+                )
+            },
+            status=status.HTTP_200_OK,
+        )
+        response.delete_cookie("access_token")
+        response.delete_cookie("refresh_token")
         return response
