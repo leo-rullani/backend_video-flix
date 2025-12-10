@@ -66,3 +66,33 @@ class LoginSerializer(serializers.Serializer):
             )
         attrs["user"] = user
         return attrs
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    """Serializer for requesting a password reset."""
+
+    email = serializers.EmailField()
+
+    def validate(self, attrs):
+        """Attach user if email exists, do not error otherwise."""
+        try:
+            user = User.objects.get(email=attrs["email"])
+        except User.DoesNotExist:
+            user = None
+        attrs["user"] = user
+        return attrs
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Serializer for confirming a new password."""
+
+    new_password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        """Ensure both password fields match."""
+        if attrs["new_password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError(
+                {"confirm_password": "Passwords do not match."}
+            )
+        return attrs

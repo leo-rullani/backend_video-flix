@@ -15,7 +15,12 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .serializers import RegisterSerializer
+from .serializers import (
+    RegisterSerializer,
+    LoginSerializer,
+    PasswordResetSerializer,
+    PasswordResetConfirmSerializer,
+)
 
 User = get_user_model()
 
@@ -45,19 +50,45 @@ def build_activation_token(user):
     return token, uidb64
 
 
+def build_password_reset_token(user):
+    """Return token and uidb64 used for password reset."""
+    uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    return token, uidb64
+
+
+def _build_link(request, name: str, uidb64: str, token: str) -> str:
+    """Build an absolute URL for a named route with uid and token."""
+    path = reverse(name, kwargs={"uidb64": uidb64, "token": token})
+    return request.build_absolute_uri(path)
+
+
 def send_activation_email(request, user, uidb64, token):
     """Send activation email containing the activation link."""
-    path = reverse("auth_api:activate", kwargs={"uidb64": uidb64, "token": token})
-    activation_link = request.build_absolute_uri(path)
+    link = _build_link(request, "auth_api:activate", uidb64, token)
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@example.com")
     send_mail(
         "Activate your Videoflix account",
-        f"Click to activate your account:\n{activation_link}",
+        f"Click to activate your account:\n{link}",
         from_email,
         [user.email],
         fail_silently=True,
     )
-    print("[ACTIVATION LINK]", activation_link)
+    print("[ACTIVATION LINK]", link)
+
+
+def send_password_reset_email(request, user, uidb64, token):
+    """Send password reset email containing the reset link."""
+    link = _build_link(request, "auth_api:password_confirm", uidb64, token)
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@example.com")
+    send_mail(
+        "Reset your Videoflix password",
+        f"Use this link to reset your password:\n{link}",
+        from_email,
+        [user.email],
+        fail_silently=True,
+    )
+    print("[PASSWORD RESET LINK]", link)
 
 
 def get_user_from_uid(uidb64):
@@ -126,26 +157,17 @@ class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        email = request.data.get("email")
-        password = request.data.get("password")
-        if not email or not password:
+        serializer = LoginSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        if not serializer.is_valid():
             return Response(
-                {"detail": "Email and password are required."},
+                serializer.errors,
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        user = authenticate(request, username=email, password=password)
-        if not user:
-            return Response(
-                {"detail": "Invalid credentials."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-        if not user.is_active:
-            return Response(
-                {"detail": "Account is not activated."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
+        user = serializer.validated_data["user"]
         refresh = RefreshToken.for_user(user)
         response = Response(
             {
@@ -223,3 +245,57 @@ class TokenRefreshView(APIView):
         )
         response.set_cookie("access_token", access, **_cookie_options())
         return response
+
+
+class PasswordResetView(APIView):
+    """Request a password reset link by email."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = serializer.validated_data.get("user")
+        if user:
+            token, uidb64 = build_password_reset_token(user)
+            send_password_reset_email(request, user, uidb64, token)
+
+        return Response(
+            {"detail": "An email has been sent to reset your password."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordResetConfirmView(APIView):
+    """Confirm password reset with uid and token."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request, uidb64: str, token: str) -> Response:
+        user = get_user_from_uid(uidb64)
+        if not user or not default_token_generator.check_token(user, token):
+            return Response(
+                {"detail": "Invalid or expired reset link."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        new_password = serializer.validated_data["new_password"]
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+
+        return Response(
+            {"detail": "Your Password has been successfully reset."},
+            status=status.HTTP_200_OK,
+        )
