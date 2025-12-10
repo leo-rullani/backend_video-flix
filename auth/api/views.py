@@ -1,7 +1,7 @@
 # auth/api/views.py
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
 from django.urls import reverse
@@ -12,13 +12,30 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
 
-from .serializers import RegisterSerializer, LoginSerializer
+from .serializers import RegisterSerializer
 
 User = get_user_model()
+
+
+def _cookie_options() -> dict:
+    """Return common options for auth cookies."""
+    return {
+        "httponly": True,
+        "secure": getattr(settings, "COOKIE_SECURE", False),
+        "samesite": getattr(settings, "COOKIE_SAMESITE", "Lax"),
+        "path": "/",
+    }
+
+
+def _set_auth_cookies(response: Response, refresh: RefreshToken) -> None:
+    """Set access and refresh token cookies on the response."""
+    access = str(refresh.access_token)
+    opts = _cookie_options()
+    response.set_cookie("access_token", access, **opts)
+    response.set_cookie("refresh_token", str(refresh), **opts)
 
 
 def build_activation_token(user):
@@ -52,38 +69,12 @@ def get_user_from_uid(uidb64):
         return None
 
 
-def get_tokens_for_user(user):
-    """Return refresh and access tokens for a user."""
-    refresh = RefreshToken.for_user(user)
-    return str(refresh), str(refresh.access_token)
-
-
-def set_auth_cookies(response, refresh_token, access_token):
-    """Attach JWT tokens as HttpOnly cookies."""
-    secure_cookie = not settings.DEBUG
-    response.set_cookie(
-        "refresh_token",
-        refresh_token,
-        httponly=True,
-        secure=secure_cookie,
-        samesite="Lax",
-    )
-    response.set_cookie(
-        "access_token",
-        access_token,
-        httponly=True,
-        secure=secure_cookie,
-        samesite="Lax",
-    )
-
-
 class RegisterView(APIView):
     """Register a user and send activation email."""
 
     permission_classes = [AllowAny]
 
     def post(self, request):
-        """Handle user registration."""
         serializer = RegisterSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(
@@ -109,7 +100,6 @@ class ActivateView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, uidb64: str, token: str) -> Response:
-        """Validate token and activate the account."""
         user = get_user_from_uid(uidb64)
         if not user:
             return Response(
@@ -131,57 +121,65 @@ class ActivateView(APIView):
 
 
 class LoginView(APIView):
-    """Authenticate a user and set JWT cookies."""
+    """Authenticate user and issue JWT cookies."""
 
     permission_classes = [AllowAny]
 
     def post(self, request):
-        """Validate credentials and set JWT cookies."""
-        serializer = LoginSerializer(
-            data=request.data,
-            context={"request": request},
-        )
-        if not serializer.is_valid():
+        email = request.data.get("email")
+        password = request.data.get("password")
+        if not email or not password:
             return Response(
-                serializer.errors,
+                {"detail": "Email and password are required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        user = serializer.validated_data["user"]
-        refresh, access = get_tokens_for_user(user)
-        body = {
-            "detail": "Login successful",
-            "user": {"id": user.id, "username": user.email},
-        }
-        response = Response(body, status=status.HTTP_200_OK)
-        set_auth_cookies(response, refresh, access)
+        user = authenticate(request, username=email, password=password)
+        if not user:
+            return Response(
+                {"detail": "Invalid credentials."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        if not user.is_active:
+            return Response(
+                {"detail": "Account is not activated."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        refresh = RefreshToken.for_user(user)
+        response = Response(
+            {
+                "detail": "Login successful",
+                "user": {"id": user.id, "username": user.email},
+            },
+            status=status.HTTP_200_OK,
+        )
+        _set_auth_cookies(response, refresh)
         return response
 
+
 class LogoutView(APIView):
-    """Log out user by blacklisting refresh token and deleting cookies."""
+    """Logout user and invalidate the refresh token."""
 
     permission_classes = [AllowAny]
 
     def post(self, request):
-        refresh_cookie = request.COOKIES.get("refresh_token")
-        if not refresh_cookie:
+        token_str = request.COOKIES.get("refresh_token")
+        if not token_str:
             return Response(
                 {"detail": "Refresh token cookie is missing."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
-            token = RefreshToken(refresh_cookie)
+            token = RefreshToken(token_str)
             try:
                 token.blacklist()
             except Exception:
-                # Blacklist not configured -> ignore, but still clear cookies
+                # If blacklist app is not enabled, just ignore.
                 pass
         except TokenError:
-            return Response(
-                {"detail": "Invalid refresh token."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            pass
 
         response = Response(
             {
@@ -194,4 +192,34 @@ class LogoutView(APIView):
         )
         response.delete_cookie("access_token")
         response.delete_cookie("refresh_token")
+        return response
+
+
+class TokenRefreshView(APIView):
+    """Issue a new access token based on the refresh token cookie."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        token_str = request.COOKIES.get("refresh_token")
+        if not token_str:
+            return Response(
+                {"detail": "Refresh token cookie is missing."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            refresh = RefreshToken(token_str)
+        except TokenError:
+            return Response(
+                {"detail": "Invalid refresh token."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        access = str(refresh.access_token)
+        response = Response(
+            {"detail": "Token refreshed", "access": access},
+            status=status.HTTP_200_OK,
+        )
+        response.set_cookie("access_token", access, **_cookie_options())
         return response
