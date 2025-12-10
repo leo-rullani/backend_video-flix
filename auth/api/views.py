@@ -161,11 +161,19 @@ class LoginView(APIView):
             data=request.data,
             context={"request": request},
         )
+
         if not serializer.is_valid():
-            return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            errors = serializer.errors
+            detail = errors.get("detail")
+
+            if detail:
+                message = detail[0] if isinstance(detail, list) else str(detail)
+                status_code = status.HTTP_401_UNAUTHORIZED
+                if "activated" in message:
+                    status_code = status.HTTP_403_FORBIDDEN
+                return Response({"detail": message}, status=status_code)
+
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
         user = serializer.validated_data["user"]
         refresh = RefreshToken.for_user(user)
