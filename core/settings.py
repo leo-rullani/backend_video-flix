@@ -67,7 +67,7 @@ MIDDLEWARE = [
 ]
 
 
-# 🔴 WICHTIG: Projektname = core
+# Important: Projektname = core
 ROOT_URLCONF = "core.urls"
 
 TEMPLATES = [

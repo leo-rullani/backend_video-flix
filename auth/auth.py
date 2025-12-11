@@ -1,4 +1,4 @@
-# auth/authentication.py
+"""Authentication backends for cookie-based JWT usage in Videoflix."""
 
 from typing import Optional, Tuple
 
@@ -12,27 +12,24 @@ User = get_user_model()
 
 class CookieJWTAuthentication(JWTAuthentication):
     """
-    JWT auth that also reads the token from the 'access_token' cookie.
+    JWT authentication that can read the token from the 'access_token' cookie.
 
     Priority:
     1. Authorization header 'Bearer <token>'
     2. Cookie 'access_token'
     """
 
-    def authenticate(self, request: Request) -> Optional[Tuple[User, UntypedToken]]:
+    def authenticate(
+        self, request: Request
+    ) -> Optional[Tuple[User, UntypedToken]]:
+        """Authenticate via Authorization header or 'access_token' cookie."""
         header = self.get_header(request)
-        raw_token = None
-
         if header is not None:
-            # Normal SimpleJWT behaviour (Authorization: Bearer <token>)
             raw_token = self.get_raw_token(header)
         else:
-            # Our cookie-based auth
             raw_token = request.COOKIES.get("access_token")
-
         if raw_token is None:
             return None
-
         validated_token = self.get_validated_token(raw_token)
         user = self.get_user(validated_token)
         return user, validated_token
