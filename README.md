@@ -1,6 +1,6 @@
 # Videoflix – Backend (Django, DRF, HLS, JWT)
 
-Videoflix ist ein Netflix-ähnliches Demo-Projekt aus dem Kurs 2024.
+Videoflix ist ein Netflix-ähnliches Demo-Projekt.
 Dieses Repository enthält das **Django-Backend** mit REST-API, JWT-Authentifizierung
 (HTTP-only Cookies), HLS-Streaming und E-Mail-Flows für Registrierung & Passwort-Reset.
 
@@ -88,7 +88,7 @@ Für lokale Entwicklung ohne Docker muss FFmpeg ggf. separat installiert werden.
 1. **Repository klonen**
 
 ```bash
-git clone <DEIN-GITHUB-URL-ZU-DIESEM-REPO>.git
+git clone <https://github.com/leo-rullani/backend_video-flix.git
 cd videoflix-backend
 ```
 
