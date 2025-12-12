@@ -1,5 +1,3 @@
-# core/urls.py
-
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -12,8 +10,10 @@ urlpatterns = [
     path("api/", include(("content.api.urls", "content_api"), namespace="content_api")),
 ]
 
+if settings.DEBUG and "debug_toolbar" in settings.INSTALLED_APPS:
+    urlpatterns += [
+        path("__debug__/", include("debug_toolbar.urls")),
+    ]
+
 if settings.DEBUG:
-    urlpatterns += static(
-        settings.MEDIA_URL,
-        document_root=settings.MEDIA_ROOT,
-    )
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

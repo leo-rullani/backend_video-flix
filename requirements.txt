@@ -19,3 +19,7 @@ sqlparse==0.5.4
 whitenoise==6.11.0
 djangorestframework-simplejwt
 django-cors-headers
+django-debug-toolbar
+django-import-export==4.3.14
+diff-match-patch==20241021
+tablib==3.9.0
