@@ -52,7 +52,7 @@ FRONTEND_ACTIVATION_PATH = os.environ.get(
 )
 FRONTEND_PASSWORD_RESET_PATH = os.environ.get(
     "FRONTEND_PASSWORD_RESET_PATH",
-    "/pages/auth/reset_password.html",
+    "/pages/auth/forgot_password.html",
 )
 
 # Cookie security
