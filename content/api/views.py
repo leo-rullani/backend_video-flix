@@ -1,5 +1,9 @@
 # content/api/views.py
 
+"""API views for listing videos and serving HLS playlists/segments."""
+
+from __future__ import annotations
+
 from pathlib import Path
 
 from django.conf import settings
@@ -14,148 +18,136 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
 from content.models import Video
-from .serializers import VideoListSerializer
 
 User = get_user_model()
 
+ALLOWED_RENDITIONS: set[str] = {"480p", "720p", "1080p"}
+
 
 def _hls_root() -> Path:
-    """Return base directory for HLS files."""
+    """Return the base directory where HLS assets are stored."""
     root = getattr(settings, "HLS_ROOT", None)
-    if root:
-        return Path(root)
-    return Path(settings.MEDIA_ROOT) / "hls"
+    return Path(root) if root else Path(settings.MEDIA_ROOT) / "hls"
 
 
 def _auth_error() -> Response:
-    """Standard 401 response for missing or invalid auth."""
+    """Return a standard 401 response for missing/invalid authentication."""
     return Response(
         {"detail": "Authentication credentials were not provided or are invalid."},
         status=status.HTTP_401_UNAUTHORIZED,
     )
 
 
-class CookieJWTAuthMixin:
-    """Helper mixin to authenticate user via access_token cookie."""
+def _to_iso_z(dt) -> str:
+    """Return an ISO-8601 UTC string ending with 'Z'."""
+    value = dt.isoformat()
+    return value.replace("+00:00", "Z")
 
-    def get_authenticated_user(self, request):
+
+def _thumbnail_url(request, video: Video) -> str | None:
+    """Return an absolute thumbnail URL or None."""
+    thumb = getattr(video, "thumbnail", None)
+    if not thumb:
+        return None
+    return request.build_absolute_uri(thumb.url)
+
+
+def _serialize_video(video: Video, request) -> dict:
+    """Serialize one Video instance for the list endpoint."""
+    return {
+        "id": video.id,
+        "created_at": _to_iso_z(video.created_at),
+        "title": video.title,
+        "description": video.description,
+        "thumbnail_url": _thumbnail_url(request, video),
+        "category": video.category,
+    }
+
+
+def _serialize_videos(videos, request) -> list[dict]:
+    """Serialize a queryset of videos for the list endpoint."""
+    return [_serialize_video(v, request) for v in videos]
+
+
+def _ensure_video_exists(movie_id: int) -> None:
+    """Raise Http404 if the requested video does not exist."""
+    if not Video.objects.filter(pk=movie_id).exists():
+        raise Http404("Video not found.")
+
+
+def _validate_resolution(resolution: str) -> None:
+    """Raise Http404 if an unknown rendition is requested."""
+    if resolution not in ALLOWED_RENDITIONS:
+        raise Http404("Invalid resolution.")
+
+
+def _validate_segment_name(segment: str) -> None:
+    """Raise Http404 for unsafe segment names."""
+    if "/" in segment or ".." in segment:
+        raise Http404("Invalid segment name.")
+
+
+def _file_or_404(path: Path, content_type: str) -> FileResponse:
+    """Return a FileResponse for an existing file."""
+    if not path.is_file():
+        raise Http404("File not found.")
+    return FileResponse(path.open("rb"), content_type=content_type)
+
+
+class CookieJWTAuthMixin:
+    """Mixin that authenticates via an access_token cookie."""
+
+    def get_authenticated_user(self, request) -> User | None:
+        """Return the authenticated user from the access_token cookie."""
         token_str = request.COOKIES.get("access_token")
         if not token_str:
             return None
-
         try:
             token = AccessToken(token_str)
         except TokenError:
             return None
-
-        user_id = token.get("user_id")
-        try:
-            return User.objects.get(pk=user_id, is_active=True)
-        except User.DoesNotExist:
-            return None
+        return User.objects.filter(pk=token.get("user_id"), is_active=True).first()
 
 
-class VideoListView(APIView):
-    """Return list of available videos for authenticated users."""
+class VideoListView(CookieJWTAuthMixin, APIView):
+    """Return a list of videos for authenticated users."""
 
-    # DRF soll hier NICHT IsAuthenticated erzwingen – wir prüfen Cookie selbst
     permission_classes = [AllowAny]
 
-    def get(self, request):
-        token_str = request.COOKIES.get("access_token")
-        if not token_str:
-            return Response(
-                {"detail": "Authentication credentials were not provided."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-
-        try:
-            token = AccessToken(token_str)
-        except TokenError:
-            return Response(
-                {"detail": "Invalid or expired access token."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-
-        user_id = token.get("user_id")
-        if not user_id:
-            return Response(
-                {"detail": "Invalid token payload."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-
+    def get(self, request) -> Response:
+        """Return all videos ordered by newest first."""
+        if not self.get_authenticated_user(request):
+            return _auth_error()
         videos = Video.objects.all().order_by("-created_at")
-
-        data = [
-            {
-                "id": video.id,
-                "created_at": video.created_at.isoformat().replace("+00:00", "Z"),
-                "title": video.title,
-                "description": video.description,
-                "thumbnail_url": request.build_absolute_uri(video.thumbnail.url)
-                if getattr(video, "thumbnail", None)
-                else None,
-                "category": video.category,
-            }
-            for video in videos
-        ]
-
-        return Response(data, status=status.HTTP_200_OK)
+        return Response(_serialize_videos(videos, request), status=status.HTTP_200_OK)
 
 
 class VideoHLSManifestView(CookieJWTAuthMixin, APIView):
-    """
-    Return HLS master playlist (index.m3u8)
-    for a given movie and resolution.
-    """
+    """Serve the HLS playlist (index.m3u8) for a video rendition."""
 
-    # Auch hier Cookie-Auth statt DRF-IsAuthenticated
     permission_classes = [AllowAny]
 
-    def get(self, request, movie_id: int, resolution: str):
-        user = self.get_authenticated_user(request)
-        if not user:
+    def get(self, request, movie_id: int, resolution: str) -> FileResponse | Response:
+        """Return the rendition playlist file response."""
+        if not self.get_authenticated_user(request):
             return _auth_error()
-
-        if not Video.objects.filter(pk=movie_id).exists():
-            raise Http404("Video not found.")
-
-        base_dir = _hls_root() / str(movie_id) / resolution
-        manifest_path = base_dir / "index.m3u8"
-        if not manifest_path.is_file():
-            raise Http404("Manifest not found.")
-
-        return FileResponse(
-            open(manifest_path, "rb"),
-            content_type="application/vnd.apple.mpegurl",
-        )
+        _ensure_video_exists(movie_id)
+        _validate_resolution(resolution)
+        path = _hls_root() / str(movie_id) / resolution / "index.m3u8"
+        return _file_or_404(path, "application/vnd.apple.mpegurl")
 
 
 class VideoHLSSegmentView(CookieJWTAuthMixin, APIView):
-    """
-    Return a single HLS segment (.ts) for a given movie and resolution.
-    """
+    """Serve a single HLS segment (.ts) for a video rendition."""
 
-    # WICHTIG: sonst 401 durch IsAuthenticated, bevor Cookie geprüft wird
     permission_classes = [AllowAny]
 
-    def get(self, request, movie_id: int, resolution: str, segment: str):
-        user = self.get_authenticated_user(request)
-        if not user:
+    def get(self, request, movie_id: int, resolution: str, segment: str) -> FileResponse | Response:
+        """Return the segment file response."""
+        if not self.get_authenticated_user(request):
             return _auth_error()
-
-        if "/" in segment or ".." in segment:
-            raise Http404("Invalid segment name.")
-
-        if not Video.objects.filter(pk=movie_id).exists():
-            raise Http404("Video not found.")
-
-        base_dir = _hls_root() / str(movie_id) / resolution
-        segment_path = base_dir / segment
-        if not segment_path.is_file():
-            raise Http404("Segment not found.")
-
-        return FileResponse(
-            open(segment_path, "rb"),
-            content_type="video/MP2T",
-        )
+        _ensure_video_exists(movie_id)
+        _validate_resolution(resolution)
+        _validate_segment_name(segment)
+        path = _hls_root() / str(movie_id) / resolution / segment
+        return _file_or_404(path, "video/MP2T")

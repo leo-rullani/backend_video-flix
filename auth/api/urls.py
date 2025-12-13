@@ -1,4 +1,4 @@
-# auth/api/urls.py
+"""URL routes for the auth API."""
 
 from django.urls import path
 
@@ -6,10 +6,10 @@ from .views import (
     ActivateView,
     LoginView,
     LogoutView,
+    PasswordResetConfirmView,
+    PasswordResetView,
     RegisterView,
     TokenRefreshView,
-    PasswordResetView,
-    PasswordResetConfirmView,
 )
 
 app_name = "auth_api"
@@ -21,9 +21,5 @@ urlpatterns = [
     path("logout/", LogoutView.as_view(), name="logout"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("password_reset/", PasswordResetView.as_view(), name="password_reset"),
-    path(
-        "password_confirm/<uidb64>/<token>/",
-        PasswordResetConfirmView.as_view(),
-        name="password_confirm",
-    ),
+    path("password_confirm/<uidb64>/<token>/", PasswordResetConfirmView.as_view(), name="password_confirm"),
 ]

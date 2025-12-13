@@ -1,12 +1,10 @@
 # content/api/urls.py
 
+"""URL patterns for Videoflix content API (video list + HLS assets)."""
+
 from django.urls import path
 
-from .views import (
-    VideoListView,
-    VideoHLSManifestView,
-    VideoHLSSegmentView,
-)
+from .views import VideoHLSManifestView, VideoHLSSegmentView, VideoListView
 
 app_name = "content_api"
 
@@ -18,8 +16,13 @@ urlpatterns = [
         name="video_manifest",
     ),
     path(
-        "video/<int:movie_id>/<str:resolution>/<str:segment>/",
+        "video/<int:movie_id>/<str:resolution>/<str:segment>",
         VideoHLSSegmentView.as_view(),
         name="video_segment",
+    ),
+    path(
+        "video/<int:movie_id>/<str:resolution>/<str:segment>/",
+        VideoHLSSegmentView.as_view(),
+        name="video_segment_slash",
     ),
 ]
