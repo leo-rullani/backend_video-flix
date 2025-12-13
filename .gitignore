@@ -1,5 +1,60 @@
-env/
+# =========================
+# Python
+# =========================
 __pycache__/
+*.py[cod]
+*.pyo
+*.pyd
 *.pyc
+
+# Virtual environments
+env/
+venv/
+.venv/
+
+# =========================
+# Django
+# =========================
 db.sqlite3
+media/
+staticfiles/
+
+# Django migrations cache
+*.log
+
+# =========================
+# Environment variables
+# =========================
 .env
+.env.*
+!.env.template
+
+# =========================
+# Docker
+# =========================
+docker-data/
+*.pid
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# =========================
+# HLS / Video outputs
+# =========================
+*.ts
+*.m3u8
+videos/
+thumbnails/
+
+# =========================
+# Node / Frontend artifacts (falls vorhanden)
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
