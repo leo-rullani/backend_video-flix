@@ -28,6 +28,7 @@ staticfiles/
 .env
 .env.*
 !.env.template
+.env.lokal
 
 # =========================
 # Docker
