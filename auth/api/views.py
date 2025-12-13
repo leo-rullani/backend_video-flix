@@ -1,11 +1,10 @@
-# auth/api/views.py
-
 """
 Auth API views for registration, activation, login, logout and password reset.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable
 from urllib.parse import urlencode
 
@@ -31,6 +30,7 @@ from .serializers import (
     RegisterSerializer,
 )
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 GENERIC_INPUT_ERROR = "Please check your inputs and try again."
@@ -146,8 +146,11 @@ def _send_email(to_email: str, subject: str, text_body: str, html_body: str) -> 
     )
 
 
-def _print_dev_link(label: str, link: str) -> None:
-    """Print a copy-paste safe link for local development."""
+def _dev_link(label: str, link: str) -> None:
+    """Log a copy-paste safe link for local development."""
+    if not getattr(settings, "DEBUG", False):
+        return
+    logger.warning("[%s LINK] %s", label, link)
     print(f"[{label} LINK] {link}", flush=True)
 
 
@@ -164,7 +167,7 @@ def _enqueue_or_run(job: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
 def send_activation_email(to_email: str, uidb64: str, token: str) -> None:
     """Send activation email with frontend activation link."""
     link = _activation_link(uidb64, token)
-    _print_dev_link("ACTIVATION", link)
+    _dev_link("ACTIVATION", link)
     html = _render_email_html(
         "Activate your Videoflix account",
         "Please activate your account to sign in.",
@@ -182,7 +185,7 @@ def send_activation_email(to_email: str, uidb64: str, token: str) -> None:
 def send_password_reset_email(to_email: str, uidb64: str, token: str) -> None:
     """Send password reset email with frontend reset link."""
     link = _password_reset_link(uidb64, token)
-    _print_dev_link("RESET", link)
+    _dev_link("RESET", link)
     html = _render_email_html(
         "Reset your Videoflix password",
         "Set a new password for your account.",
@@ -303,10 +306,13 @@ class RegisterView(APIView):
         token, uidb64 = build_activation_token(user)
         _enqueue_or_run(send_activation_email, user.email, uidb64, token)
 
-        return Response(
-            {"detail": "Registration successful. Please check your email."},
-            status=status.HTTP_201_CREATED,
-        )
+        payload: dict[str, Any] = {
+            "detail": "Registration successful. Please check your email.",
+        }
+        if getattr(settings, "DEBUG", False):
+            payload["activation_link"] = _activation_link(uidb64, token)
+
+        return Response(payload, status=status.HTTP_201_CREATED)
 
 
 class ActivateView(APIView):
