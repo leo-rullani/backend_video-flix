@@ -1,3 +1,5 @@
+# auth/api/views.py
+
 """
 Auth API views for registration, activation, login, logout and password reset.
 """
@@ -105,7 +107,7 @@ def _frontend_base_url() -> str:
 def _frontend_link(path: str, uidb64: str, token: str) -> str:
     """Build a frontend link with uid/token query params."""
     clean_path = path if path.startswith("/") else f"/{path}"
-    params = urlencode({"uid": uidb64, "uidb64": uidb64, "token": token})
+    params = urlencode({"uid": uidb64, "token": token})
     return f"{_frontend_base_url()}{clean_path}?{params}"
 
 
@@ -144,9 +146,9 @@ def _send_email(to_email: str, subject: str, text_body: str, html_body: str) -> 
     )
 
 
-def _log_email_link(kind: str, to_email: str, link: str) -> None:
-    """Print a copy-paste safe link (important for console backend output)."""
-    print(f"[EMAIL LINK][{kind}] {to_email}: {link}")
+def _print_dev_link(label: str, link: str) -> None:
+    """Print a copy-paste safe link for local development."""
+    print(f"[{label} LINK] {link}", flush=True)
 
 
 def _enqueue_or_run(job: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
@@ -162,27 +164,37 @@ def _enqueue_or_run(job: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
 def send_activation_email(to_email: str, uidb64: str, token: str) -> None:
     """Send activation email with frontend activation link."""
     link = _activation_link(uidb64, token)
-    _log_email_link("ACTIVATE", to_email, link)
+    _print_dev_link("ACTIVATION", link)
     html = _render_email_html(
         "Activate your Videoflix account",
         "Please activate your account to sign in.",
         "Activate",
         link,
     )
-    _send_email(to_email, "Activate your Videoflix account", f"Activate your account:\n{link}", html)
+    _send_email(
+        to_email,
+        "Activate your Videoflix account",
+        f"Activate your account:\n{link}",
+        html,
+    )
 
 
 def send_password_reset_email(to_email: str, uidb64: str, token: str) -> None:
     """Send password reset email with frontend reset link."""
     link = _password_reset_link(uidb64, token)
-    _log_email_link("RESET", to_email, link)
+    _print_dev_link("RESET", link)
     html = _render_email_html(
         "Reset your Videoflix password",
         "Set a new password for your account.",
         "Reset password",
         link,
     )
-    _send_email(to_email, "Reset your Videoflix password", f"Reset your password:\n{link}", html)
+    _send_email(
+        to_email,
+        "Reset your Videoflix password",
+        f"Reset your password:\n{link}",
+        html,
+    )
 
 
 def get_user_from_uid(uidb64: str) -> User | None:
@@ -259,7 +271,10 @@ def _safe_refresh_token(token_str: str) -> RefreshToken | None:
 def _token_refresh_response(refresh: RefreshToken) -> Response:
     """Create a response that sets a new access_token cookie."""
     access = str(refresh.access_token)
-    response = Response({"detail": "Token refreshed", "access": access}, status=status.HTTP_200_OK)
+    response = Response(
+        {"detail": "Token refreshed", "access": access},
+        status=status.HTTP_200_OK,
+    )
     response.set_cookie("access_token", access, **_cookie_options())
     return response
 
@@ -278,7 +293,10 @@ class RegisterView(APIView):
     def post(self, request: Request) -> Response:
         serializer = RegisterSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({"detail": GENERIC_INPUT_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": GENERIC_INPUT_ERROR},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         user = serializer.save()
         _deactivate_user(user)
@@ -300,9 +318,15 @@ class ActivateView(APIView):
     def get(self, request: Request, uidb64: str, token: str) -> Response:
         user = _user_for_token(uidb64, token)
         if not user:
-            return Response({"message": "Activation failed."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"message": "Activation failed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         _activate_user(user)
-        return Response({"message": "Account successfully activated."}, status=status.HTTP_200_OK)
+        return Response(
+            {"message": "Account successfully activated."},
+            status=status.HTTP_200_OK,
+        )
 
 
 class LoginView(APIView):
@@ -333,7 +357,10 @@ class LogoutView(APIView):
     def post(self, request: Request) -> Response:
         token_str = request.COOKIES.get("refresh_token")
         if not token_str:
-            return Response({"detail": "Refresh token cookie is missing."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Refresh token cookie is missing."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         _blacklist_refresh_token(token_str)
         response = Response(
@@ -352,11 +379,17 @@ class TokenRefreshView(APIView):
     def post(self, request: Request) -> Response:
         token_str = request.COOKIES.get("refresh_token")
         if not token_str:
-            return Response({"detail": "Refresh token cookie is missing."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Refresh token cookie is missing."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         refresh = _safe_refresh_token(token_str)
         if not refresh:
-            return Response({"detail": "Invalid refresh token."}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response(
+                {"detail": "Invalid refresh token."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
 
         return _token_refresh_response(refresh)
 
@@ -369,7 +402,10 @@ class PasswordResetView(APIView):
     def post(self, request: Request) -> Response:
         serializer = PasswordResetSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({"detail": GENERIC_INPUT_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": GENERIC_INPUT_ERROR},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         user = serializer.validated_data.get("user")
         if user:
@@ -397,7 +433,10 @@ class PasswordResetConfirmView(APIView):
 
         serializer = PasswordResetConfirmSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({"detail": GENERIC_INPUT_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": GENERIC_INPUT_ERROR},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         _set_user_password(user, serializer.validated_data["new_password"])
         return Response(
