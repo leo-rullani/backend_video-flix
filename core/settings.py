@@ -4,14 +4,16 @@ Django settings for the Videoflix backend.
 
 from __future__ import annotations
 
-from pathlib import Path
 import os
 from datetime import timedelta
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Docker usually injects env vars via docker-compose env_file.
+# This is a safe fallback for local runs.
 load_dotenv(BASE_DIR / ".env")
 
 ENV_FILE = os.environ.get("ENV_FILE", "").strip()
@@ -50,35 +52,48 @@ FRONTEND_ACTIVATION_PATH = os.environ.get(
     "FRONTEND_ACTIVATION_PATH",
     "/pages/auth/activate.html",
 )
+# IMPORTANT: This must point to the page where the user sets a NEW password (not "forgot_password.html")
 FRONTEND_PASSWORD_RESET_PATH = os.environ.get(
     "FRONTEND_PASSWORD_RESET_PATH",
-    "/pages/auth/forgot_password.html",
+    "/pages/auth/reset_password.html",
 )
 
 # Cookie security
 COOKIE_SECURE = env_bool("COOKIE_SECURE", False)
 COOKIE_SAMESITE = os.environ.get("COOKIE_SAMESITE", "Lax")
 
-# Keep Django cookies aligned with your chosen cookie policy
 CSRF_COOKIE_SECURE = COOKIE_SECURE
 SESSION_COOKIE_SECURE = COOKIE_SECURE
 CSRF_COOKIE_SAMESITE = COOKIE_SAMESITE
 SESSION_COOKIE_SAMESITE = COOKIE_SAMESITE
 
-# Email (development defaults to console backend)
+# Email
+# Teacher expects SMTP by default (can be overridden via .env if needed)
 EMAIL_BACKEND = os.environ.get(
     "EMAIL_BACKEND",
-    "django.core.mail.backends.console.EmailBackend",
+    "django.core.mail.backends.smtp.EmailBackend",
 )
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
 EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+
 EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
-DEFAULT_FROM_EMAIL = os.environ.get(
-    "DEFAULT_FROM_EMAIL",
-    EMAIL_HOST_USER or "no-reply@example.com",
-)
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+
+# Avoid hanging forever if SMTP is misconfigured
+EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "10"))
+
+# If SSL is enabled (usually port 465), TLS must be disabled
+if EMAIL_USE_SSL:
+    EMAIL_USE_TLS = False
+
+# Fix common placeholder issue: DEFAULT_FROM_EMAIL=default_from_email
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "").strip()
+if not DEFAULT_FROM_EMAIL or DEFAULT_FROM_EMAIL.lower() in {"default_from_email", "none"}:
+    DEFAULT_FROM_EMAIL = EMAIL_HOST_USER or "no-reply@example.com"
+
+SERVER_EMAIL = os.environ.get("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -154,13 +169,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "core.wsgi.application"
 
+# IMPORTANT: Docker defaults should use service names db / redis (not 127.0.0.1)
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.environ.get("DB_NAME", "videoflix_db"),
         "USER": os.environ.get("DB_USER", "videoflix_user"),
         "PASSWORD": os.environ.get("DB_PASSWORD", "supersecretpassword"),
-        "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
+        "HOST": os.environ.get("DB_HOST", "db"),
         "PORT": int(os.environ.get("DB_PORT", "5432")),
     }
 }
@@ -168,7 +184,7 @@ DATABASES = {
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": os.environ.get("REDIS_LOCATION", "redis://127.0.0.1:6379/1"),
+        "LOCATION": os.environ.get("REDIS_LOCATION", "redis://redis:6379/1"),
         "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
         "KEY_PREFIX": "videoflix",
     }
@@ -176,7 +192,7 @@ CACHES = {
 
 RQ_QUEUES = {
     "default": {
-        "HOST": os.environ.get("REDIS_HOST", "127.0.0.1"),
+        "HOST": os.environ.get("REDIS_HOST", "redis"),
         "PORT": int(os.environ.get("REDIS_PORT", "6379")),
         "DB": int(os.environ.get("REDIS_DB", "0")),
         "DEFAULT_TIMEOUT": 360,

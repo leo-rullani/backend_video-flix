@@ -45,7 +45,10 @@ def render_email_html(title: str, message: str, button_text: str, link: str) -> 
 
 def send_email(to_email: str, subject: str, text_body: str, html_body: str) -> None:
     """Send email using Django settings."""
-    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@example.com")
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "") or getattr(
+        settings, "EMAIL_HOST_USER", "no-reply@example.com"
+    )
+
     send_mail(
         subject,
         text_body,
@@ -57,7 +60,10 @@ def send_email(to_email: str, subject: str, text_body: str, html_body: str) -> N
 
 
 def dev_link(label: str, link: str) -> None:
-    """Print/log a copy-paste safe link for local development."""
+    """
+    Print/log a copy-paste safe link for local development.
+    Helps a lot when console email output is quoted-printable.
+    """
     if not getattr(settings, "DEBUG", False):
         return
     logger.warning("[%s LINK] %s", label, link)
@@ -68,23 +74,35 @@ def send_activation_email(to_email: str, uidb64: str, token: str) -> None:
     """Send activation email."""
     link = activation_link(uidb64, token)
     dev_link("ACTIVATION", link)
+
     html = render_email_html(
         "Activate your Videoflix account",
         "Please activate your account to sign in.",
         "Activate",
         link,
     )
-    send_email(to_email, "Activate your Videoflix account", f"Activate your account:\n{link}", html)
+    send_email(
+        to_email,
+        "Activate your Videoflix account",
+        f"Activate your account:\n{link}",
+        html,
+    )
 
 
 def send_password_reset_email(to_email: str, uidb64: str, token: str) -> None:
     """Send password reset email."""
     link = password_reset_link(uidb64, token)
     dev_link("RESET", link)
+
     html = render_email_html(
         "Reset your Videoflix password",
         "Set a new password for your account.",
         "Reset password",
         link,
     )
-    send_email(to_email, "Reset your Videoflix password", f"Reset your password:\n{link}", html)
+    send_email(
+        to_email,
+        "Reset your Videoflix password",
+        f"Reset your password:\n{link}",
+        html,
+    )

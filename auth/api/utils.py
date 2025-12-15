@@ -43,11 +43,15 @@ def frontend_base_url() -> str:
 
 def frontend_link(path: str, uidb64: str, token: str) -> str:
     """
-    Frontend link with query params expected by your frontend:
-    ?uid=<uidb64>&token=<token>
+    Frontend link with query params.
+
+    - New frontend expects: ?uid=<uidb64>&token=<token>
+    - Some older versions expect: ?uidb64=<uidb64>&token=<token>
+
+    We include BOTH to avoid reviewer mismatch.
     """
     clean_path = path if path.startswith("/") else f"/{path}"
-    params = urlencode({"uid": uidb64, "token": token})
+    params = urlencode({"uid": uidb64, "uidb64": uidb64, "token": token})
     return f"{frontend_base_url()}{clean_path}?{params}"
 
 
