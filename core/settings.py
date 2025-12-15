@@ -55,7 +55,7 @@ FRONTEND_ACTIVATION_PATH = os.environ.get(
 # IMPORTANT: This must point to the page where the user sets a NEW password (not "forgot_password.html")
 FRONTEND_PASSWORD_RESET_PATH = os.environ.get(
     "FRONTEND_PASSWORD_RESET_PATH",
-    "/pages/auth/reset_password.html",
+    "/pages/auth/confirm_password.html",
 )
 
 # Cookie security

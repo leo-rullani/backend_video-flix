@@ -63,7 +63,7 @@ def activation_link(uidb64: str, token: str) -> str:
 
 def password_reset_link(uidb64: str, token: str) -> str:
     """Frontend password reset link."""
-    path = getattr(settings, "FRONTEND_PASSWORD_RESET_PATH", "/pages/auth/reset_password.html")
+    path = getattr(settings, "FRONTEND_PASSWORD_RESET_PATH", "/pages/auth/confirm_password.html")
     return frontend_link(path, uidb64, token)
 
 
