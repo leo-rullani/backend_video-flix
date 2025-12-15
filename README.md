@@ -1,8 +1,41 @@
+Yes — that’s exactly what he means: **after “build and start containers” you don’t need the manual “apply migrations” step**, because your `backend.entrypoint.sh` already runs:
+
+* `makemigrations` (you see `No changes detected`)
+* `migrate`
+* (and also creates the superuser)
+
+So your README should reflect that.
+
+Also about your “Step 1 migrations” question:
+
+* **Do NOT delete the whole `migrations/` folder.**
+* **Keep** `migrations/__init__.py`
+* **Remove / ignore** all `migrations/*.py` files (like `0001_initial.py`), because Docker will generate them on startup.
+
+In your repo you basically want:
+
+✅ `content/migrations/__init__.py`
+✅ `auth/migrations/__init__.py`
+❌ no `000X_*.py` files tracked in Git
+
+---
+
+## ✅ Updated README.md (English, simple language, no missing steps)
+
+Replace your current `README.md` with this:
+
 ````md
 # Videoflix Backend (Django + DRF + JWT Cookies + Postgres + Redis/RQ + HLS)
 
 Videoflix is a Netflix-like demo / school project (Developer Akademie).
-This repository contains the **Django backend** with a REST API, **JWT authentication using HttpOnly cookies**, **email flows** (registration activation + password reset), **Redis + Django RQ** (background jobs), and **HLS streaming** (FFmpeg).
+This repository contains the **Django backend** with:
+
+- REST API (`/api/...`)
+- JWT authentication using **HttpOnly cookies**
+- Registration + account activation email flow
+- Password reset email flow
+- Redis + Django RQ (background jobs)
+- HLS streaming (FFmpeg)
 
 The frontend (HTML/CSS/JS) connects to this backend via `/api/...`.
 
@@ -10,102 +43,99 @@ The frontend (HTML/CSS/JS) connects to this backend via `/api/...`.
 
 ## Table of Contents
 
-1. [Tech Stack](#tech-stack)
-2. [Features](#features)
-3. [Requirements](#requirements)
-4. [Quickstart with Docker](#quickstart-with-docker)
-5. [Environment Variables](#environment-variables)
-6. [Common Docker Commands](#common-docker-commands)
-7. [Auth Flow: Register → Activate → Login](#auth-flow-register--activate--login)
-8. [Email Setup (Console vs Real SMTP)](#email-setup-console-vs-real-smtp)
-9. [Background Jobs (Redis + RQ)](#background-jobs-redis--rq)
-10. [HLS (FFmpeg) and Streaming Endpoints](#hls-ffmpeg-and-streaming-endpoints)
-11. [API Overview](#api-overview)
-12. [Tests](#tests)
-13. [Keep requirements.txt up to date](#keep-requirementstxt-up-to-date)
-14. [Troubleshooting](#troubleshooting)
-15. [Legal](#legal)
+1. Tech Stack
+2. Features
+3. Requirements
+4. Quickstart with Docker (recommended)
+5. Environment Variables (.env)
+6. What Docker does automatically
+7. Common Docker Commands
+8. Auth Flow: Register → Activate → Login
+9. Email Setup (Real SMTP)
+10. Background Jobs (Redis + RQ)
+11. HLS (FFmpeg) + Streaming Endpoints
+12. API Overview
+13. Tests
+14. Keep requirements.txt up to date
+15. Troubleshooting
+16. Reference (Developer Akademie Docker Files)
 
 ---
 
-## Tech Stack
+## 1) Tech Stack
 
-- Python (runs inside Docker)
 - Django + Django REST Framework (DRF)
 - JWT via `djangorestframework-simplejwt`
-- Authentication via **HttpOnly cookies** (`access_token`, `refresh_token`)
-- PostgreSQL (Docker container)
-- Redis + Django RQ (queue + worker for background tasks)
-- FFmpeg for HLS (`.m3u8` playlists + `.ts` segments)
-- Whitenoise for static files inside Docker
-- gunicorn as WSGI server in Docker
+- Auth via HttpOnly cookies: `access_token`, `refresh_token`
+- PostgreSQL (Docker)
+- Redis + Django RQ
+- FFmpeg for HLS (`.m3u8` + `.ts`)
+- gunicorn + Whitenoise (inside Docker)
 
 ---
 
-## Features
+## 2) Features
 
-### Authentication & Accounts
-- Register with email + password + password confirmation
-- Account is **inactive until activated**
+### Accounts & Authentication
+- Register with email + password + confirmation
+- User is **inactive until activated**
 - Activation email is sent after registration
-- Login sets HttpOnly cookie tokens
+- Login sets HttpOnly cookies
 - Logout blacklists refresh token
 - Password reset via email link
 
 ### Videos & Streaming
-- Video list endpoint for the frontend dashboard
-- HLS streaming for multiple qualities (e.g. 480p / 720p / 1080p)
-- Endpoints serve `index.m3u8` and `.ts` segments
+- Video list endpoint for dashboard
+- HLS endpoints serve playlists and `.ts` segments
 
 ### Background Jobs
-- Email sending is executed via **Django RQ** (Redis queue)
-- HLS generation can be run via a management command
+- Emails are queued via Django RQ and processed by a worker
 
 ---
 
-## Requirements
+## 3) Requirements
 
 You need:
-- Docker Desktop / Docker Engine (with Compose)
+- Docker Desktop / Docker Engine (with Docker Compose)
 - Git
 
-This project is designed to run **fully containerized** (recommended for grading / review).
+This project is designed to run **fully containerized** (recommended for grading/review).
 
 ---
 
-## Quickstart with Docker
+## 4) Quickstart with Docker (recommended)
 
 > Important (Developer Akademie Docker setup):
 > - Do **not** modify `backend.Dockerfile`, `docker-compose.yml`, or `backend.entrypoint.sh`.
 > - You may change values in `.env` but do **not rename** existing variables.
-> - Keep `requirements.txt` updated if you install new Python packages.
+> - Keep `requirements.txt` updated if you install new packages.
 
-### 1) Clone the repository
+### Step 1 — Clone the repository
 
 ```bash
 git clone https://github.com/leo-rullani/backend_video-flix.git
 cd backend_video-flix
 ````
 
-### 2) Create your `.env`
+### Step 2 — Create your `.env`
 
-**Mac / Linux / Git Bash (Windows):**
+Mac / Linux / Git Bash (Windows):
 
 ```bash
 cp .env.template .env
 ```
 
-**Windows PowerShell alternative:**
+Windows PowerShell:
 
 ```powershell
 copy .env.template .env
 ```
 
-### 3) Fill in `.env`
+### Step 3 — Fill in `.env`
 
-Open `.env` and set the values you need (see [Environment Variables](#environment-variables)).
+Open `.env` and set values (see section “Environment Variables”).
 
-### 4) Build and start containers
+### Step 4 — Build and start containers
 
 If your system supports `docker-compose`:
 
@@ -119,65 +149,59 @@ If your system uses the new plugin syntax:
 docker compose up -d --build
 ```
 
-### 5) Apply migrations
+### Step 5 — Open the backend
 
-```bash
-docker-compose exec web python manage.py migrate
-```
-
-### 6) (Optional) Create a Django admin user
-
-```bash
-docker-compose exec web python manage.py createsuperuser
-```
-
-### 7) Open the backend
-
-* Backend root: `http://127.0.0.1:8000/`
-* Django admin: `http://127.0.0.1:8000/admin/`
+* Backend: `http://127.0.0.1:8000/`
+* Admin: `http://127.0.0.1:8000/admin/`
 * API base: `http://127.0.0.1:8000/api/`
 
 ---
 
-## Environment Variables
+## 5) Environment Variables (.env)
 
-The backend reads its configuration from `.env`.
+The backend reads config from `.env`.
 
-### Required (minimum for Docker setup)
+### Minimum required
 
 ```env
 # Django
 SECRET_KEY=please_change_me
 DEBUG=True
 ALLOWED_HOSTS=127.0.0.1,localhost
+
+# Needed for cookies + CSRF in local dev (frontend runs on :5500)
 CSRF_TRUSTED_ORIGINS=http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:8000,http://localhost:8000
 
-# PostgreSQL
+# PostgreSQL (Docker service name is "db")
 DB_NAME=videoflix_db
 DB_USER=videoflix_user
 DB_PASSWORD=supersecretpassword
 DB_HOST=db
 DB_PORT=5432
 
-# Redis
+# Redis (Docker service name is "redis")
 REDIS_LOCATION=redis://redis:6379/1
 REDIS_HOST=redis
 REDIS_PORT=6379
 REDIS_DB=0
 
-# Frontend URLs used to build activation/reset links
+# Frontend URLs used for activation/reset links
 FRONTEND_BASE_URL=http://127.0.0.1:5500
 FRONTEND_ACTIVATION_PATH=/pages/auth/activate.html
 FRONTEND_PASSWORD_RESET_PATH=/pages/auth/reset_password.html
+
+# Auto-created Django admin user (created by backend.entrypoint.sh)
+DJANGO_SUPERUSER_USERNAME=admin
+DJANGO_SUPERUSER_PASSWORD=adminpassword
+DJANGO_SUPERUSER_EMAIL=admin@example.com
 ```
 
-### Email (Console mode or real SMTP)
+### Email (Real SMTP)
+
+For grading/review, SMTP is required (so real emails can be sent).
 
 ```env
-# Email backend (console is default for local dev)
-EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
-
-# For real SMTP email sending (example)
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 EMAIL_HOST=smtp.example.com
 EMAIL_PORT=587
 EMAIL_HOST_USER=your_email@example.com
@@ -186,179 +210,134 @@ EMAIL_USE_TLS=True
 DEFAULT_FROM_EMAIL=your_email@example.com
 ```
 
+After changing `.env`, rebuild:
+
+```bash
+docker-compose up -d --build
+```
+
 ---
 
-## Common Docker Commands
+## 6) What Docker does automatically
 
-### Show running containers
+When you start Docker, `backend.entrypoint.sh` automatically:
+
+1. waits for PostgreSQL
+2. collects static files
+3. runs `makemigrations` and `migrate`
+4. creates the Django admin user (from `DJANGO_SUPERUSER_*`)
+5. starts gunicorn (and the RQ worker)
+
+So you usually **do NOT need** to run `migrate` manually.
+
+---
+
+## 7) Common Docker Commands
+
+Show containers:
 
 ```bash
 docker-compose ps
 ```
 
-### View backend logs
+Backend logs:
 
 ```bash
 docker-compose logs -f web
 ```
 
-### Stop containers
+Stop containers:
 
 ```bash
 docker-compose down
 ```
 
-### Rebuild everything (after dependency changes)
+Rebuild:
 
 ```bash
 docker-compose up -d --build
 ```
 
----
-
-## Auth Flow: Register → Activate → Login
-
-This is the most important flow for reviewers.
-
-### 1) Register
-
-Use the frontend registration form (or call the API).
-After a successful registration:
-
-* The user is created
-* The user is set to **inactive**
-* An activation email is sent (in console mode: printed in logs)
-
-### 2) Get the activation link
-
-If your email backend is the console backend, the activation email will be printed in the **Docker logs**:
+Open a Django shell:
 
 ```bash
-docker-compose logs -f web
+docker-compose exec web python manage.py shell
 ```
-
-You should see a clean link that you can copy/paste (example):
-
-```text
-[ACTIVATION LINK] http://127.0.0.1:5500/pages/auth/activate.html?uid=...&token=...
-```
-
-Open that link in the browser.
-The frontend activation page will then call the backend activation endpoint.
-
-### 3) Login
-
-After activation, login works and sets:
-
-* `access_token` (HttpOnly cookie)
-* `refresh_token` (HttpOnly cookie)
 
 ---
 
-## Email Setup (Console vs Real SMTP)
+## 8) Auth Flow: Register → Activate → Login
 
-### Console email (recommended for local development / grading)
+### Register
 
-This is the simplest and most stable setup:
+* User is created and set to inactive
+* Activation email is sent
 
-* Emails are not sent to the internet
-* The email content (including activation/reset link) appears in Docker logs
-* Reviewers can test the flow without SMTP credentials
+### Activate
 
-Check the current backend:
+* User clicks activation link from the email
+* Frontend activation page calls backend activation endpoint
+
+### Login
+
+* Login sets HttpOnly cookies:
+
+  * `access_token`
+  * `refresh_token`
+
+---
+
+## 9) Email Setup (Real SMTP)
+
+If SMTP is configured correctly, emails go to a real mailbox.
+
+To verify the backend is using SMTP:
 
 ```bash
 docker-compose exec web python manage.py shell -c "from django.conf import settings; print(settings.EMAIL_BACKEND)"
 ```
 
-Expected output for console mode:
+Expected:
 
 ```text
-django.core.mail.backends.console.EmailBackend
+django.core.mail.backends.smtp.EmailBackend
 ```
-
-### Real email (SMTP)
-
-If you want real emails:
-
-1. Set `EMAIL_BACKEND` to SMTP backend (or remove it to use your default settings)
-2. Provide `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, etc. in `.env`
-3. Rebuild containers:
-
-```bash
-docker-compose up -d --build
-```
-
-Note:
-
-* Some providers require an “app password” (e.g. Gmail).
-* SMTP can fail due to firewall, missing credentials, or provider restrictions.
 
 ---
 
-## Background Jobs (Redis + RQ)
+## 10) Background Jobs (Redis + RQ)
 
-Activation and reset emails are queued as background jobs.
+Emails are queued and processed by Django RQ.
 
-### Check if worker is running
-
-In backend logs you should see something like:
+In logs you should see something like:
 
 ```text
 *** Listening on default...
 ```
 
-### Manually run a worker (if needed)
-
-```bash
-docker-compose exec web python manage.py rqworker default
-```
-
 ---
 
-## HLS (FFmpeg) and Streaming Endpoints
+## 11) HLS (FFmpeg) + Streaming Endpoints
 
-### Generate HLS renditions
+HLS output includes:
 
-The backend provides a management command:
+* `index.m3u8`
+* many `.ts` segments
 
-```bash
-docker-compose exec web python manage.py generate_hls
-```
+Example endpoints:
 
-Options:
-
-* Only one video:
-
-```bash
-docker-compose exec web python manage.py generate_hls --video-id 1
-```
-
-* Overwrite existing output:
-
-```bash
-docker-compose exec web python manage.py generate_hls --overwrite
-```
-
-Output structure (default):
-
-* `media/hls/<video_id>/480p/index.m3u8`
-* `media/hls/<video_id>/480p/000.ts`, `001.ts`, ...
-
-### HLS endpoints
-
-* Master playlist:
+* Playlist:
 
   * `GET /api/video/<movie_id>/<resolution>/index.m3u8`
-* Segment file:
+* Segment:
 
   * `GET /api/video/<movie_id>/<resolution>/<segment>/`
 
 ---
 
-## API Overview
+## 12) API Overview
 
-### Authentication
+Auth:
 
 * `POST /api/register/`
 * `GET /api/activate/<uidb64>/<token>/`
@@ -368,7 +347,7 @@ Output structure (default):
 * `POST /api/password_reset/`
 * `POST /api/password_confirm/<uidb64>/<token>/`
 
-### Videos / Streaming
+Video:
 
 * `GET /api/video/`
 * `GET /api/video/<movie_id>/<resolution>/index.m3u8`
@@ -376,25 +355,17 @@ Output structure (default):
 
 ---
 
-## Tests
-
-Run Django tests inside Docker:
+## 13) Tests
 
 ```bash
 docker-compose exec web python manage.py test
 ```
 
-If your project also uses pytest:
-
-```bash
-docker-compose exec web pytest
-```
-
 ---
 
-## Keep requirements.txt up to date
+## 14) Keep requirements.txt up to date
 
-If you install new Python packages, update `requirements.txt`:
+If you install new packages:
 
 ```bash
 docker-compose exec web pip freeze > requirements.txt
@@ -404,79 +375,33 @@ Commit the updated file.
 
 ---
 
-## Troubleshooting
+## 15) Troubleshooting
 
-### 1) Docker is not running
+### Docker not running
 
-If you see errors like “unable to get image” or connection errors:
-
-* Start Docker Desktop
-* Retry:
+Start Docker Desktop, then:
 
 ```bash
 docker-compose up -d --build
 ```
 
-### 2) `backend.entrypoint.sh: no such file or directory`
+### backend.entrypoint.sh “no such file or directory”
 
-This often happens when the file uses **CRLF** line endings.
-Fix: set file line endings to **LF** and commit.
+Often CRLF line endings on Windows.
+Fix file line endings to **LF** and commit.
 
-### 3) CORS blocked in the browser
+### CORS / cookies not working
 
-If the browser shows CORS errors:
-
-* Make sure your frontend origin is in `CORS_ALLOWED_ORIGINS`
-* Make sure `CORS_ALLOW_CREDENTIALS=True`
-* Make sure frontend fetch uses:
-
-  * `credentials: "include"`
-
-Also avoid mixing `localhost` and `127.0.0.1` (cookies can behave differently).
-
-### 4) Token expired / always 401
-
-If you get “token is expired”:
-
-* Clear cookies for `127.0.0.1`
-* Or call logout endpoint
-* Then login again
-
-### 5) Migration problems after model changes
-
-If migrations fail and Docker cannot start cleanly:
-
-```bash
-docker run --rm web python manage.py makemigrations
-docker run --rm web python manage.py migrate
-```
+Do not mix `localhost` and `127.0.0.1`. Use one consistently.
 
 ---
 
-## Legal
+## 16) Reference (Developer Akademie Docker Files)
 
-Operator (demo project):
-
-Leugzim Rullani
-Untere Farnbühlstrasse 3
-5610 Wohlen
-Email: [leugzimrullani@outlook.com](mailto:leugzimrullani@outlook.com)
-
-Legal pages are in the frontend:
-
-* `/pages/legal/imprint/index.html`
-* `/pages/legal/privacy/index.html`
-
----
-
-## Reference (Developer Akademie Docker setup)
-
-Docker setup source repository (for the provided docker files):
+Docker setup source:
 
 ```text
 https://github.com/Developer-Akademie-Backendkurs/material.videoflix-docker-files
 ```
 
-```
-::contentReference[oaicite:0]{index=0}
-```
+````
