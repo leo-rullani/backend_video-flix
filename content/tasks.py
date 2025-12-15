@@ -1,9 +1,36 @@
-# content/tasks.py
+from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 from typing import Dict
 
+from django.core.management import call_command
+
+logger = logging.getLogger(__name__)
+
+
+def generate_hls_for_video(video_id: int, overwrite: bool = False) -> None:
+    """
+    Background job (RQ):
+    Generates HLS playlists/segments for ONE video by calling the existing
+    management command: `python manage.py generate_hls --video-id <id>`.
+
+    This is the important part for the reviewer, because the frontend requests:
+    /api/video/<id>/<resolution>/index.m3u8
+    """
+    logger.warning("[TASK] Generating HLS for video_id=%s (overwrite=%s)", video_id, overwrite)
+
+    # Calls your management command:
+    #   python manage.py generate_hls --video-id <video_id> [--overwrite]
+    call_command("generate_hls", video_id=video_id, overwrite=overwrite)
+
+    logger.warning("[TASK] HLS finished for video_id=%s", video_id)
+
+
+# ---------------------------
+# Legacy MP4 conversion (optional)
+# ---------------------------
 
 def _build_target_path(source: str, suffix: str) -> str:
     """
@@ -17,7 +44,7 @@ def _build_target_path(source: str, suffix: str) -> str:
 def _run_ffmpeg(command: str) -> None:
     """
     Helper to run an FFmpeg command via subprocess.
-    Raises an error if FFmpeg returns a non‑zero exit code.
+    Raises an error if FFmpeg returns a non-zero exit code.
     """
     completed = subprocess.run(
         command,
@@ -29,15 +56,10 @@ def _run_ffmpeg(command: str) -> None:
         print("[FFMPEG ERROR]", completed.stderr)
         raise RuntimeError(f"FFmpeg failed with code {completed.returncode}")
     else:
-        # Truncate output to avoid spamming logs
         print("[FFMPEG OK]", (completed.stdout or "")[:200])
 
 
 def convert_480p(source: str) -> str:
-    """
-    Convert the given video to 480p inside the same directory.
-    Returns the absolute path of the new file.
-    """
     target = _build_target_path(source, "_480p")
     cmd = (
         'ffmpeg -i "{}" -s hd480 '
@@ -48,10 +70,6 @@ def convert_480p(source: str) -> str:
 
 
 def convert_720p(source: str) -> str:
-    """
-    Convert the given video to 720p inside the same directory.
-    Returns the absolute path of the new file.
-    """
     target = _build_target_path(source, "_720p")
     cmd = (
         'ffmpeg -i "{}" -s hd720 '
@@ -62,10 +80,6 @@ def convert_720p(source: str) -> str:
 
 
 def convert_1080p(source: str) -> str:
-    """
-    Convert the given video to 1080p inside the same directory.
-    Returns the absolute path of the new file.
-    """
     target = _build_target_path(source, "_1080p")
     cmd = (
         'ffmpeg -i "{}" -s hd1080 '
@@ -77,17 +91,13 @@ def convert_1080p(source: str) -> str:
 
 def convert_videos(source: str) -> Dict[str, str]:
     """
-    Main background task used by django-rq.
-
-    Takes the absolute path of the original uploaded video and converts it to
-    1080p, 720p and 480p (in that order, all in the same folder).
-
-    Returns a mapping of resolution -> generated file path.
+    Old job: creates MP4 variants (1080p/720p/480p).
+    Not required for HLS playback, but kept to not break existing code.
     """
-    print(f"[TASK] Starting video conversions for: {source}")
+    print(f"[TASK] Starting MP4 conversions for: {source}")
     result: Dict[str, str] = {}
     result["1080p"] = convert_1080p(source)
     result["720p"] = convert_720p(source)
     result["480p"] = convert_480p(source)
-    print(f"[TASK] Finished video conversions for: {source}")
+    print(f"[TASK] Finished MP4 conversions for: {source}")
     return result

@@ -8,7 +8,7 @@ class ContentConfig(AppConfig):
 
     def ready(self):
         """
-        Wird beim Start von Django ausgeführt.
-        Hier registrieren wir die Signals, indem wir das Modul importieren.
+        Called when Django starts.
+        We import signals so the receivers are registered.
         """
-        from . import signals  # noqa: F401  -> nur importieren, damit die Receiver registriert werden
+        from . import signals  # noqa: F401
