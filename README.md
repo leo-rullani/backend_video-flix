@@ -1,29 +1,3 @@
-Yes — that’s exactly what he means: **after “build and start containers” you don’t need the manual “apply migrations” step**, because your `backend.entrypoint.sh` already runs:
-
-* `makemigrations` (you see `No changes detected`)
-* `migrate`
-* (and also creates the superuser)
-
-So your README should reflect that.
-
-Also about your “Step 1 migrations” question:
-
-* **Do NOT delete the whole `migrations/` folder.**
-* **Keep** `migrations/__init__.py`
-* **Remove / ignore** all `migrations/*.py` files (like `0001_initial.py`), because Docker will generate them on startup.
-
-In your repo you basically want:
-
-✅ `content/migrations/__init__.py`
-✅ `auth/migrations/__init__.py`
-❌ no `000X_*.py` files tracked in Git
-
----
-
-## ✅ Updated README.md (English, simple language, no missing steps)
-
-Replace your current `README.md` with this:
-
 ````md
 # Videoflix Backend (Django + DRF + JWT Cookies + Postgres + Redis/RQ + HLS)
 
